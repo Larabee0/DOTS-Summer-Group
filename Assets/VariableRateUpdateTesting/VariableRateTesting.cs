@@ -7,6 +7,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
+[DisableAutoCreation]
 [UpdateInGroup(typeof(CustomRateGroup))]
 public partial class VariableRateTesting : SystemBase
 {
