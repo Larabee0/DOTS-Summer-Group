@@ -305,6 +305,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   gridSize: 10
+  infectionTexture: {fileID: 0}
 --- !u!1 &1914124362
 GameObject:
   m_ObjectHideFlags: 0
