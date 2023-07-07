@@ -299,19 +299,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3cd0d554a9dba1b4a9c2f5ce150c4984, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  cellOffset:
-    x: 2
-    y: 0
-    z: 2
   dimentions:
-    x: 2
-    y: 2
+    x: 1
+    y: 1
   cellScale: 1
   chunkSize: 5
   meshFilter: {fileID: 1516770741}
   meshRenderer: {fileID: 1516770740}
-  chunks: []
-  cells: []
 --- !u!4 &1516770739
 Transform:
   m_ObjectHideFlags: 0
@@ -348,6 +342,9 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: ea36786590c5cd44d9477bd7ca46dab0, type: 2}
+  - {fileID: 2100000, guid: 5eb5e8a91e121f4469a4b18192087178, type: 2}
+  - {fileID: 2100000, guid: 342bec06882d1dd4d95414279360e96c, type: 2}
+  - {fileID: 2100000, guid: 73b808437bc2d9c4a85aa9aaaae107f0, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

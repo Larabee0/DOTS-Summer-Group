@@ -3,25 +3,24 @@ using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
-using static UnityEditor.Searcher.SearcherWindow.Alignment;
-using static UnityEngine.UI.GridLayoutGroup;
 
 public class GridAuthoring : MonoBehaviour
 {
     [Tooltip("Chunk grid dimentions")]
-    public float3 cellOffset = float3.zero;
     public int2 dimentions = new(64,64);
     [Tooltip("Main Grid Scale"),Min(1)]
     public float cellScale = 1f;
-    private float chunkScale;
     [Tooltip("chunk size square it to get cells per chunl"), Min(1)]
     public int chunkSize = 3;
+
+    private float chunkScale;
+    private float3 cellOffset = float3.zero;
 
     [SerializeField] private MeshFilter meshFilter;
     [SerializeField] private MeshRenderer meshRenderer;
 
-    [SerializeField] private List<Chunk> chunks = new();
-    [SerializeField] private List<Cell> cells = new();
+    private List<Chunk> chunks = new();
+    private List<Cell> cells = new();
     private Mesh gridMesh;
 
     private void Start()
@@ -29,35 +28,86 @@ public class GridAuthoring : MonoBehaviour
         if (meshFilter != null && meshRenderer != null)
         {
             GenerateGrid();
-            meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 1 };
-            // GenerateGridMesh();
+            meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 2 };
+            GenerateGridMesh();
         }
     }
 
     private void GenerateGridMesh()
     {
+        if(gridMesh == null)
+        {
+            return;
+        }
         gridMesh.Clear();
+        gridMesh.subMeshCount = 4;
         List<Vector3> vertices = new();
-        List<int> triangles = new();
+        List<int> cellLines = new();
+        List<int> chunkLines = new();
+        List<int> cellTriangles = new();
+        List<int> chunkTriangles = new();
         List<Color> indices = new();
 
-        for (int i = 0, x = 0; x < dimentions.x; x++)
+        for (int i = 0; i < cells.Count; i++)
         {
-            for (int z = 0; z < dimentions.y; z++, i++)
-            {
-                vertices.Add(new Vector3(x * cellScale, 0, z * cellScale));
-                triangles.Add(i);
-
-
-            }
+            float3x4 corners = cells[i].corners;
+            AddGeometry(vertices, cellLines, cellTriangles, corners);
+        }
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            float3x4 corners = chunks[i].corners;
+            AddGeometry(vertices, chunkLines, chunkTriangles, corners);
         }
         gridMesh.SetVertices(vertices);
-        gridMesh.SetIndices(triangles, MeshTopology.Points, 0);
+        gridMesh.SetIndices(cellLines, MeshTopology.Lines, 0);
+        gridMesh.SetIndices(chunkLines, MeshTopology.Lines, 1);
+        gridMesh.SetIndices(cellTriangles, MeshTopology.Triangles, 2);
+        gridMesh.SetIndices(chunkTriangles, MeshTopology.Triangles, 3);
+    }
+
+    private static void AddGeometry(List<Vector3> vertices, List<int> lines, List<int> triangles, float3x4 corners)
+    {
+        int index = vertices.Count;
+        vertices.Add(corners.c0);
+        vertices.Add(corners.c1);
+        vertices.Add(corners.c2);
+        vertices.Add(corners.c3);
+
+        lines.Add(index);
+        lines.Add(index + 1);
+
+        lines.Add(index + 1);
+        lines.Add(index + 2);
+
+        lines.Add(index + 2);
+        lines.Add(index + 3);
+
+        lines.Add(index + 3);
+        lines.Add(index);
+
+        triangles.Add(index);
+        triangles.Add(index + 1);
+        triangles.Add(index + 2);
+
+
+        triangles.Add(index + 2);
+        triangles.Add(index + 3);
+        triangles.Add(index);
+    }
+
+    private void OnValidate()
+    {
+        if (Application.isPlaying)
+        {
+            GenerateGrid();
+            GenerateGridMesh();
+        }
     }
 
     private void GenerateGrid()
     {
-        chunkScale = cellScale + chunkSize;
+        chunks.Clear();
+        chunkScale =  chunkSize * cellScale;
         for (int i = 0, x = 0; x < dimentions.x; x++)
         {
             for (int z = 0; z < dimentions.y; z++, i++)
@@ -66,6 +116,9 @@ public class GridAuthoring : MonoBehaviour
             }
         }
 
+        cellOffset = chunks[0].corners.c0 + (cellScale /2);
+        cellOffset.y = 0;
+        cells.Clear();
         for (int i = 0; i < chunks.Count; i++)
         {
             for (int x = 0; x < chunkSize; x++)
@@ -103,7 +156,7 @@ public class GridAuthoring : MonoBehaviour
                 //cells[cellBufferIndex] = cell;
                     
                 cell.coordinate = new int2(gridX, gridZ);
-                cell.centerPosition = new float3(gridX * cellScale, 0, gridZ * cellScale)- cellOffset;
+                cell.centerPosition = cellOffset+ new float3(gridX * cellScale, 0, gridZ * cellScale) ;
                 cell.UpdateCorners(cellScale);
             }
         }
@@ -111,6 +164,7 @@ public class GridAuthoring : MonoBehaviour
 
     private void OnDrawGizmos()
     {
+        return;
         for (int i = 0; i < chunks.Count; i++)
         {
             Chunk cur = chunks[i];
@@ -138,7 +192,7 @@ public class GridAuthoring : MonoBehaviour
         }
     }
 
-    [System.Serializable]
+    //[System.Serializable]
     public class Chunk
     {
         public int index;
@@ -160,19 +214,12 @@ public class GridAuthoring : MonoBehaviour
 
             corners.c0 = bottomLeft;
             corners.c1 = new float3(bottomLeft.x, 0f, topRight.z);
-            corners.c2 = new float3(topRight.x, 0f, bottomLeft.z);
-            corners.c3 = topRight;
-        }
-
-        public void AddCell(Cell cell)
-        {
-            cell.chunkIndex = index;
-            cell.chunkCoordinate = coordinate;
-            virtualSubGrid.Add(cell);
+            corners.c2 = topRight;
+            corners.c3 = new float3(topRight.x, 0f, bottomLeft.z);
         }
     }
 
-    [System.Serializable]
+    //[System.Serializable]
     public class Cell
     {
         public int2 coordinate;
@@ -198,8 +245,8 @@ public class GridAuthoring : MonoBehaviour
 
             corners.c0 = bottomLeft;
             corners.c1 = new float3(bottomLeft.x, 0f, topRight.z);
-            corners.c2 = new float3(topRight.x, 0f, bottomLeft.z);
-            corners.c3 = topRight;
+            corners.c2 = topRight;
+            corners.c3 = new float3(topRight.x, 0f, bottomLeft.z);
         }
 
         public Cell (Chunk chunk)
@@ -217,8 +264,8 @@ public class GridAuthoring : MonoBehaviour
 
             corners.c0 = bottomLeft;
             corners.c1 = new float3(bottomLeft.x, 0f, topRight.z);
-            corners.c2 = new float3(topRight.x, 0f, bottomLeft.z);
-            corners.c3 = topRight;
+            corners.c2 = topRight;
+            corners.c3 = new float3(topRight.x, 0f, bottomLeft.z);
         }
     }
 
