@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
@@ -8,7 +9,7 @@ public class GridAuthoring : MonoBehaviour
 {
     [Tooltip("Chunk grid dimentions")]
     public int2 dimentions = new(64,64);
-    [Tooltip("Main Grid Scale"),Min(1)]
+    [Tooltip("Main Grid Scale"),Min(0.001f)]
     public float cellScale = 1f;
     [Tooltip("chunk size square it to get cells per chunl"), Min(1)]
     public int chunkSize = 3;
@@ -18,15 +19,38 @@ public class GridAuthoring : MonoBehaviour
 
     [SerializeField] private MeshFilter meshFilter;
     [SerializeField] private MeshRenderer meshRenderer;
+    [SerializeField] private MeshRenderer textureDisplay;
 
     private List<Chunk> chunks = new();
     private List<Cell> cells = new();
     private Mesh gridMesh;
 
+    private Texture2D gridTexture;
+
     private void Start()
     {
+        gridTexture = new(dimentions.x * chunkSize, dimentions.y * chunkSize, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapModeU = TextureWrapMode.Repeat,
+            wrapModeV = TextureWrapMode.Clamp
+        };
+
+        for (int x = 0; x < gridTexture.width; x++)
+        {
+            for (int y = 0; y < gridTexture.height; y++)
+            {
+                gridTexture.SetPixel(x, y, UnityEngine.Random.ColorHSV());
+            }
+        }
+        gridTexture.Apply();    
+        if(textureDisplay != null)
+        {
+            textureDisplay.material.mainTexture = gridTexture;
+        }
         if (meshFilter != null && meshRenderer != null)
         {
+            meshRenderer.materials[2].SetTexture("_GridColours", gridTexture);
             GenerateGrid();
             meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 2 };
             GenerateGridMesh();
@@ -40,13 +64,15 @@ public class GridAuthoring : MonoBehaviour
             return;
         }
         gridMesh.Clear();
+        gridMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         gridMesh.subMeshCount = 4;
+        
         List<Vector3> vertices = new();
         List<int> cellLines = new();
         List<int> chunkLines = new();
         List<int> cellTriangles = new();
         List<int> chunkTriangles = new();
-        List<Color> indices = new();
+        
 
         for (int i = 0; i < cells.Count; i++)
         {
@@ -58,11 +84,66 @@ public class GridAuthoring : MonoBehaviour
             float3x4 corners = chunks[i].corners;
             AddGeometry(vertices, chunkLines, chunkTriangles, corners);
         }
-        gridMesh.SetVertices(vertices);
+
+        HashSet<Vector3> compressedVerticesSet = new(vertices);
+        List<Vector3> compressedVertices = new(compressedVerticesSet);
+
+
+        Dictionary<Vector3, int> vertexRemap = new(compressedVertices.Count);
+
+        for (int i = 0; i < compressedVertices.Count; i++)
+        {
+            vertexRemap.Add(compressedVertices[i], i);
+        }
+
+        for (int i = 0; i < cellLines.Count; i++)
+        {
+            cellLines[i] = vertexRemap[vertices[cellLines[i]]];
+        }
+        for (int i = 0; i < chunkLines.Count; i++)
+        {
+            chunkLines[i] = vertexRemap[vertices[chunkLines[i]]];
+        }
+        for (int i = 0; i < cellTriangles.Count; i++)
+        {
+            cellTriangles[i] = vertexRemap[vertices[cellTriangles[i]]];
+        }
+        for (int i = 0; i < chunkTriangles.Count; i++)
+        {
+            chunkTriangles[i] = vertexRemap[vertices[chunkTriangles[i]]];
+        }
+
+        float4[] colors = new float4[compressedVertices.Count];
+        for (int i = 0;i < cells.Count; i++)
+        {
+            Cell cur = cells[i];
+            float3x4 corners = cells[i].corners;
+            
+            int bottomLeft = vertexRemap[corners[0]];
+            int topLeft = vertexRemap[corners[1]];
+            int topRight = vertexRemap[corners[2]];
+            int bottomRight = vertexRemap[corners[3]];
+
+            int cellIndex = cur.index;
+            colors[bottomLeft][2] = cellIndex;
+            colors[topLeft][3] = cellIndex;
+            colors[topRight][0] = cellIndex;
+            colors[bottomRight][1] = cellIndex;
+        }
+
+        gridMesh.SetVertices(compressedVertices);
+        gridMesh.SetColors(new NativeArray<float4>(colors, Allocator.Temp));
         gridMesh.SetIndices(cellLines, MeshTopology.Lines, 0);
         gridMesh.SetIndices(chunkLines, MeshTopology.Lines, 1);
         gridMesh.SetIndices(cellTriangles, MeshTopology.Triangles, 2);
         gridMesh.SetIndices(chunkTriangles, MeshTopology.Triangles, 3);
+        Debug.Log(gridMesh.indexFormat);
+        Debug.LogFormat("Vertex Buffer {0}", vertices.Count);
+        Debug.LogFormat("Compressed Vertices Buffer {0}", compressedVertices.Count);
+        Debug.LogFormat("cellLines (0) {0}", cellLines.Count);
+        Debug.LogFormat("chunkLines (1) {0}", chunkLines.Count);
+        Debug.LogFormat("cellTriangles (2) {0}", cellTriangles.Count);
+        Debug.LogFormat("chunkTriangles (3) {0}", chunkTriangles.Count);
     }
 
     private static void AddGeometry(List<Vector3> vertices, List<int> lines, List<int> triangles, float3x4 corners)
