@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.ConstrainedExecution;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -13,9 +15,13 @@ public class GridAuthoring : MonoBehaviour
     public float cellScale = 1f;
     [Tooltip("chunk size square it to get cells per chunl"), Min(1)]
     public int chunkSize = 3;
+    [Tooltip("Cell Pixel Dimentions")]
+    [SerializeField, Min(1)] private int pixelsPerCell = 16;
 
     private float chunkScale;
     private float3 cellOffset = float3.zero;
+    private int tWidth = 128;
+    private int tHeight = 128;
 
     [SerializeField] private MeshFilter meshFilter;
     [SerializeField] private MeshRenderer meshRenderer;
@@ -29,22 +35,9 @@ public class GridAuthoring : MonoBehaviour
 
     private void Start()
     {
-        gridTexture = new(dimentions.x * chunkSize, dimentions.y * chunkSize, TextureFormat.RGBA32, false, true)
-        {
-            filterMode = FilterMode.Point,
-            wrapModeU = TextureWrapMode.Repeat,
-            wrapModeV = TextureWrapMode.Clamp
-        };
+        InitialiseGridTexture();
 
-        for (int x = 0; x < gridTexture.width; x++)
-        {
-            for (int y = 0; y < gridTexture.height; y++)
-            {
-                gridTexture.SetPixel(x, y, UnityEngine.Random.ColorHSV());
-            }
-        }
-        gridTexture.Apply();    
-        if(textureDisplay != null)
+        if (textureDisplay != null)
         {
             textureDisplay.material.mainTexture = gridTexture;
         }
@@ -57,129 +50,161 @@ public class GridAuthoring : MonoBehaviour
         }
     }
 
+    private void InitialiseGridTexture()
+    {
+        if (gridTexture != null)
+        {
+            gridTexture.Reinitialize(dimentions.x * chunkSize * pixelsPerCell, dimentions.y * chunkSize * pixelsPerCell);
+
+            gridTexture.filterMode = FilterMode.Point;
+            gridTexture.wrapModeU = TextureWrapMode.Mirror;
+            gridTexture.wrapModeV = TextureWrapMode.Mirror;
+        }
+        else
+        {
+            gridTexture = new(dimentions.x * chunkSize * pixelsPerCell, dimentions.y * chunkSize * pixelsPerCell, TextureFormat.RGBA32, false, true)
+            {
+                filterMode = FilterMode.Point,
+                wrapModeU = TextureWrapMode.Mirror,
+                wrapModeV = TextureWrapMode.Mirror
+            };
+        }
+        tWidth = gridTexture.width;
+        tHeight = gridTexture.height;
+
+        for (int x = 0; x < gridTexture.width; x += pixelsPerCell)
+        {
+            for (int y = 0; y < gridTexture.height; y += pixelsPerCell)
+            {
+                Color colour = UnityEngine.Random.ColorHSV();
+                for (int z = 0; z < pixelsPerCell; z++)
+                {
+                    for (int w = 0; w < pixelsPerCell; w++)
+                    {
+                        gridTexture.SetPixel(x + z, y + w, colour);
+                        colour = UnityEngine.Random.ColorHSV();
+                    }
+                }
+            }
+        }
+        gridTexture.Apply();
+    }
+
     private void GenerateGridMesh()
     {
-        if(gridMesh == null)
+        if (gridMesh == null)
         {
             return;
         }
         gridMesh.Clear();
         gridMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         gridMesh.subMeshCount = 4;
-        
-        List<Vector3> vertices = new();
+
+        Dictionary<Vector3, int> vertexMap = new();
         List<int> cellLines = new();
         List<int> chunkLines = new();
         List<int> cellTriangles = new();
         List<int> chunkTriangles = new();
-        
+
 
         for (int i = 0; i < cells.Count; i++)
         {
             float3x4 corners = cells[i].corners;
-            AddGeometry(vertices, cellLines, cellTriangles, corners);
+            AddGeometry(vertexMap, cellLines, cellTriangles, corners);
         }
         for (int i = 0; i < chunks.Count; i++)
         {
             float3x4 corners = chunks[i].corners;
-            AddGeometry(vertices, chunkLines, chunkTriangles, corners);
+            AddGeometry(vertexMap, chunkLines, chunkTriangles, corners);
         }
 
-        HashSet<Vector3> compressedVerticesSet = new(vertices);
-        List<Vector3> compressedVertices = new(compressedVerticesSet);
 
-
-        Dictionary<Vector3, int> vertexRemap = new(compressedVertices.Count);
-
-        for (int i = 0; i < compressedVertices.Count; i++)
-        {
-            vertexRemap.Add(compressedVertices[i], i);
-        }
-
-        for (int i = 0; i < cellLines.Count; i++)
-        {
-            cellLines[i] = vertexRemap[vertices[cellLines[i]]];
-        }
-        for (int i = 0; i < chunkLines.Count; i++)
-        {
-            chunkLines[i] = vertexRemap[vertices[chunkLines[i]]];
-        }
-        for (int i = 0; i < cellTriangles.Count; i++)
-        {
-            cellTriangles[i] = vertexRemap[vertices[cellTriangles[i]]];
-        }
-        for (int i = 0; i < chunkTriangles.Count; i++)
-        {
-            chunkTriangles[i] = vertexRemap[vertices[chunkTriangles[i]]];
-        }
-
-        float4[] colors = new float4[compressedVertices.Count];
-        for (int i = 0;i < cells.Count; i++)
+        List<Vector3> vertices = new(vertexMap.Keys);
+        cells.Sort();
+        NativeArray<float2> uvs = new(vertices.Count, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        float2 UVoffset = new(1f / (dimentions.x * chunkSize), 1f / (dimentions.y * chunkSize));
+        float2 cellDimentions = new(dimentions.x * chunkSize, dimentions.y * chunkSize);
+        for (int i = 0; i < cells.Count; i++)
         {
             Cell cur = cells[i];
             float3x4 corners = cells[i].corners;
-            
-            int bottomLeft = vertexRemap[corners[0]];
-            int topLeft = vertexRemap[corners[1]];
-            int topRight = vertexRemap[corners[2]];
-            int bottomRight = vertexRemap[corners[3]];
 
-            int cellIndex = cur.index;
-            colors[bottomLeft][2] = cellIndex;
-            colors[topLeft][3] = cellIndex;
-            colors[topRight][0] = cellIndex;
-            colors[bottomRight][1] = cellIndex;
+            int bottomLeft = vertexMap[corners[0]];
+            int topLeft = vertexMap[corners[1]];
+            int topRight = vertexMap[corners[2]];
+            int bottomRight = vertexMap[corners[3]];
+
+            float2 cellCentreUV = math.remap(float2.zero, cellDimentions, float2.zero, 1f, (float2)cur.coordinate);
+            uvs[bottomLeft] = cellCentreUV;
+            uvs[topLeft] = math.min(new float2(1), new float2(cellCentreUV.x, cellCentreUV.y + UVoffset.y));
+            uvs[topRight] = math.min(new float2(1), new float2(cellCentreUV.x + UVoffset.x, cellCentreUV.y + UVoffset.y)); //1, 1
+            uvs[bottomRight] = math.min(new float2(1), new float2(cellCentreUV.x + UVoffset.x, cellCentreUV.y)); //1, 0
         }
 
-        gridMesh.SetVertices(compressedVertices);
-        gridMesh.SetColors(new NativeArray<float4>(colors, Allocator.Temp));
+        gridMesh.SetVertices(vertices);
+        gridMesh.SetUVs(0, uvs);
         gridMesh.SetIndices(cellLines, MeshTopology.Lines, 0);
         gridMesh.SetIndices(chunkLines, MeshTopology.Lines, 1);
         gridMesh.SetIndices(cellTriangles, MeshTopology.Triangles, 2);
         gridMesh.SetIndices(chunkTriangles, MeshTopology.Triangles, 3);
         Debug.Log(gridMesh.indexFormat);
         Debug.LogFormat("Vertex Buffer {0}", vertices.Count);
-        Debug.LogFormat("Compressed Vertices Buffer {0}", compressedVertices.Count);
         Debug.LogFormat("cellLines (0) {0}", cellLines.Count);
         Debug.LogFormat("chunkLines (1) {0}", chunkLines.Count);
         Debug.LogFormat("cellTriangles (2) {0}", cellTriangles.Count);
         Debug.LogFormat("chunkTriangles (3) {0}", chunkTriangles.Count);
     }
 
-    private static void AddGeometry(List<Vector3> vertices, List<int> lines, List<int> triangles, float3x4 corners)
+    private void AddGeometry(Dictionary<Vector3, int> vertexMap, List<int> lines, List<int> triangles, float3x4 corners)
     {
-        int index = vertices.Count;
-        vertices.Add(corners.c0);
-        vertices.Add(corners.c1);
-        vertices.Add(corners.c2);
-        vertices.Add(corners.c3);
+        int4 indicies = int4.zero;
+        
+        for (int i = 0; i < 4; i++)
+        {
+            MapVertex(ref indicies, vertexMap, corners, i);
+        }
 
-        lines.Add(index);
-        lines.Add(index + 1);
+        lines.Add(indicies.x);
+        lines.Add(indicies.y);
 
-        lines.Add(index + 1);
-        lines.Add(index + 2);
+        lines.Add(indicies.y);
+        lines.Add(indicies.z);
 
-        lines.Add(index + 2);
-        lines.Add(index + 3);
+        lines.Add(indicies.z);
+        lines.Add(indicies.w);
 
-        lines.Add(index + 3);
-        lines.Add(index);
+        lines.Add(indicies.w);
+        lines.Add(indicies.x);
 
-        triangles.Add(index);
-        triangles.Add(index + 1);
-        triangles.Add(index + 2);
+        triangles.Add(indicies.x);
+        triangles.Add(indicies.z);
+        triangles.Add(indicies.w);
 
 
-        triangles.Add(index + 2);
-        triangles.Add(index + 3);
-        triangles.Add(index);
+        triangles.Add(indicies.y);
+        triangles.Add(indicies.z);
+        triangles.Add(indicies.x);
+    }
+
+    private static void MapVertex(ref int4 indicies, Dictionary<Vector3, int> vertexMap, float3x4 corners, int index)
+    {
+        if (vertexMap.TryGetValue(corners[index], out int value))
+        {
+            indicies[index] = value;
+        }
+        else
+        {
+            indicies[index] = vertexMap.Count;
+            vertexMap.Add(corners[index], indicies[index]);
+        }
+
     }
 
     private void OnValidate()
     {
         if (Application.isPlaying)
         {
+            InitialiseGridTexture();
             GenerateGrid();
             GenerateGridMesh();
         }
@@ -293,15 +318,15 @@ public class GridAuthoring : MonoBehaviour
             float3 topRight = centerPosition + halfScale;
             bottomLeft.y = topRight.y = 0;
 
-            corners.c0 = bottomLeft;
-            corners.c1 = new float3(bottomLeft.x, 0f, topRight.z);
-            corners.c2 = topRight;
-            corners.c3 = new float3(topRight.x, 0f, bottomLeft.z);
+            corners.c0 = bottomLeft; // 0, 0
+            corners.c1 = new float3(bottomLeft.x, 0f, topRight.z);//0,1
+            corners.c2 = topRight; // 1,1
+            corners.c3 = new float3(topRight.x, 0f, bottomLeft.z);//1,0
         }
     }
 
     //[System.Serializable]
-    public class Cell
+    public class Cell : IComparable<Cell>
     {
         public int2 coordinate;
         public int chunkIndex;
@@ -347,6 +372,11 @@ public class GridAuthoring : MonoBehaviour
             corners.c1 = new float3(bottomLeft.x, 0f, topRight.z);
             corners.c2 = topRight;
             corners.c3 = new float3(topRight.x, 0f, bottomLeft.z);
+        }
+
+        public int CompareTo(Cell other)
+        {
+            return index.CompareTo(other.index);
         }
     }
 
