@@ -36,14 +36,23 @@ public class InfectionGridAuthoring : MonoBehaviour
 
     private void Start()
     {
-        InitialiseWorldInfection(new int2[] 
+        InitialiseWorldInfection(new float3[] 
         {
-            new int2(0,0),
-            new int2(1,0),
-            new int2(1,1),
-            new int2(0,1),
-            new int2(1,2),
-            new int2(2,2),
+            new float3(0,0, 1),
+            new float3(1,0, .9f),
+            new float3(0,1, .9f),
+
+            new float3(1,1, .8f),
+            new float3(1,2, .8f),
+
+            new float3(2,2, .6f),
+
+            new float3(2,3, .5f),
+            new float3(3,2, .5f),
+            new float3(4,3, .5f),
+
+            new float3(4,3, .3f),
+            new float3(4,4, .3f),
         });
 
         InitialiseGridTexture();
@@ -67,7 +76,7 @@ public class InfectionGridAuthoring : MonoBehaviour
         meshRenderer.materials[2].SetFloat("_ChunkSize", chunkSize);
     }
 
-    private void InitialiseWorldInfection(int2[] infectionSpawnCoordinates)
+    private void InitialiseWorldInfection(float3[] infectionSpawnCoordinates)
     {
         if (worldInfection != null)
         {
@@ -79,14 +88,14 @@ public class InfectionGridAuthoring : MonoBehaviour
         }
 
         // Create starting infected cells
-        foreach (int2 coordinate in infectionSpawnCoordinates)
+        foreach (float3 coordinate in infectionSpawnCoordinates)
         {
             if (coordinate.x > (dimentions.x * chunkSize) || coordinate.y > (dimentions.y * chunkSize)) 
             { 
               Debug.Log("Infection spawnpoint out of bounds"); 
               continue; 
             }
-            worldInfection[(coordinate.y * dimentions.x * chunkSize) + coordinate.x] = 1f;
+            worldInfection[(int)((coordinate.y * dimentions.x * chunkSize) + coordinate.x)] = coordinate.z;
         }
     }
 
