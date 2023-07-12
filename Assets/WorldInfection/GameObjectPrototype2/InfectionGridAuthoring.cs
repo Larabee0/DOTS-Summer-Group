@@ -49,20 +49,45 @@ public class InfectionGridAuthoring : MonoBehaviour
         }
         if (meshFilter != null && meshRenderer != null)
         {
-            meshRenderer.materials[2].SetTexture("_GridColours", gridTexture);
+            meshRenderer.materials[2].SetTexture("_InfectionTexture", gridTexture);
             GenerateGrid();
             meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 2 };
             GenerateGridMesh();
         }
     }
 
+    private void UpdateInfectionShaderProperties() 
+    {
+        meshRenderer.materials[2].SetVector("_Dimentions", new Vector4(dimentions.x, dimentions.y, 0, 0));
+        meshRenderer.materials[2].SetFloat("_ChunkSize", chunkSize);
+    }
+
     private void InitialiseWorldInfection(int2[] infectionSpawnCoordinates)
     {
-        worldInfection = new float[dimentions.x * chunkSize * dimentions.y * chunkSize];
+        if (worldInfection != null)
+        {
+            Array.Resize(ref worldInfection, dimentions.x * chunkSize * dimentions.y * chunkSize);
+        }
+        else
+        {
+            worldInfection = new float[dimentions.x * chunkSize * dimentions.y * chunkSize];
+        }
 
         foreach (int2 coordinate in infectionSpawnCoordinates)
         {
             worldInfection[(coordinate.y * dimentions.x) + coordinate.x] = 1f;
+        }
+    }
+
+    private void InitializeWorldInfection()
+    {
+        if (worldInfection != null)
+        {
+            Array.Resize(ref worldInfection, dimentions.x * chunkSize * dimentions.y * chunkSize);
+        }
+        else
+        {
+            worldInfection = new float[dimentions.x * chunkSize * dimentions.y * chunkSize];
         }
     }
 
@@ -213,7 +238,10 @@ public class InfectionGridAuthoring : MonoBehaviour
     {
         if (Application.isPlaying)
         {
+            InitializeWorldInfection();
             InitialiseGridTexture();
+            UpdateInfectionShaderProperties();
+
             GenerateGrid();
             GenerateGridMesh();
         }
