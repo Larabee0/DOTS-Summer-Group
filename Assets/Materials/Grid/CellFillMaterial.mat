@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: CellFillMaterial
-  m_Shader: {fileID: -6465566751694194690, guid: 533fcea1f01903e4e9fc8dcf069bf23e, type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: e992a439bea769e45942f0b8d2485cbc, type: 3}
   m_Parent: {fileID: 2100000, guid: 5fb245efe18cb1c40b427d68ba05ea4f, type: 2}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
@@ -25,10 +25,15 @@ Material:
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _GroundTexture:
+        m_Texture: {fileID: 2800000, guid: 69f13798b7aa43041bd6619b7df59800, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats: []
-    m_Colors: []
+    m_Colors:
+    - _InfectionColor: {r: 0.7075472, g: 0, b: 0.55216426, a: 0}
   m_BuildTextureStacks: []
 --- !u!114 &8065024511524655235
 MonoBehaviour:

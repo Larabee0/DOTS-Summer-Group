@@ -39,6 +39,11 @@ public class InfectionGridAuthoring : MonoBehaviour
         InitialiseWorldInfection(new int2[] 
         {
             new int2(0,0),
+            new int2(1,0),
+            new int2(1,1),
+            new int2(0,1),
+            new int2(1,2),
+            new int2(2,2),
         });
 
         InitialiseGridTexture();
@@ -73,9 +78,15 @@ public class InfectionGridAuthoring : MonoBehaviour
             worldInfection = new float[dimentions.x * chunkSize * dimentions.y * chunkSize];
         }
 
+        // Create starting infected cells
         foreach (int2 coordinate in infectionSpawnCoordinates)
         {
-            worldInfection[(coordinate.y * dimentions.x) + coordinate.x] = 1f;
+            if (coordinate.x > (dimentions.x * chunkSize) || coordinate.y > (dimentions.y * chunkSize)) 
+            { 
+              Debug.Log("Infection spawnpoint out of bounds"); 
+              continue; 
+            }
+            worldInfection[(coordinate.y * dimentions.x * chunkSize) + coordinate.x] = 1f;
         }
     }
 

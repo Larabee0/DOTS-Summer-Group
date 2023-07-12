@@ -451,14 +451,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   dimentions:
-    x: 1
-    y: 1
+    x: 4
+    y: 4
   cellScale: 1
   chunkSize: 4
-  pixelsPerCell: 1
   meshFilter: {fileID: 1516770741}
   meshRenderer: {fileID: 1516770740}
   textureDisplay: {fileID: 1516770740}
+  worldInfection: []
 --- !u!1 &2080174501
 GameObject:
   m_ObjectHideFlags: 0
