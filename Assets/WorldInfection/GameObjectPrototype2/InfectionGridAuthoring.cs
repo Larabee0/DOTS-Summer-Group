@@ -29,7 +29,7 @@ public class InfectionGridAuthoring : MonoBehaviour
     private List<Cell> cells = new();
     private Mesh gridMesh;
 
-    private Texture2D gridTexture;
+    private Texture2D infectionTexture;
 
     //INFECTION STUFF
     public float[] worldInfection;
@@ -56,18 +56,32 @@ public class InfectionGridAuthoring : MonoBehaviour
         });
 
         InitialiseGridTexture();
+        infectionTexture.filterMode = FilterMode.Bilinear;
 
         if (textureDisplay != null)
         {
-            textureDisplay.material.mainTexture = gridTexture;
+            textureDisplay.material.mainTexture = infectionTexture;
         }
         if (meshFilter != null && meshRenderer != null)
         {
-            meshRenderer.materials[2].SetTexture("_InfectionTexture", gridTexture);
+            meshRenderer.materials[2].SetTexture("_InfectionTexture", infectionTexture);
             GenerateGrid();
             meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 2 };
             GenerateGridMesh();
         }
+    }
+
+    public void UpdateInfectionInTextures()
+    {
+        for (int x = 0; x < infectionTexture.width; x += 1)
+        {
+            for (int y = 0; y < infectionTexture.height; y += 1)
+            {
+                Color infectionColor = new Color(worldInfection[(y * dimentions.x * chunkSize) + x], 0, 0);
+                infectionTexture.SetPixel(x, y, infectionColor);
+            }
+        }
+        infectionTexture.Apply();
     }
 
     private void UpdateInfectionShaderProperties() 
@@ -113,35 +127,35 @@ public class InfectionGridAuthoring : MonoBehaviour
 
     private void InitialiseGridTexture()
     {
-        if (gridTexture != null)
+        if (infectionTexture != null)
         {
-            gridTexture.Reinitialize(dimentions.x * chunkSize, dimentions.y * chunkSize);
+            infectionTexture.Reinitialize(dimentions.x * chunkSize, dimentions.y * chunkSize);
 
-            gridTexture.filterMode = FilterMode.Point;
-            gridTexture.wrapModeU = TextureWrapMode.Mirror;
-            gridTexture.wrapModeV = TextureWrapMode.Mirror;
+            infectionTexture.filterMode = FilterMode.Point;
+            infectionTexture.wrapModeU = TextureWrapMode.Mirror;
+            infectionTexture.wrapModeV = TextureWrapMode.Mirror;
         }
         else
         {
-            gridTexture = new(dimentions.x * chunkSize, dimentions.y * chunkSize, TextureFormat.RGBA32, false, true)
+            infectionTexture = new(dimentions.x * chunkSize, dimentions.y * chunkSize, TextureFormat.RGBA32, false, true)
             {
                 filterMode = FilterMode.Point,
                 wrapModeU = TextureWrapMode.Mirror,
                 wrapModeV = TextureWrapMode.Mirror
             };
         }
-        tWidth = gridTexture.width;
-        tHeight = gridTexture.height;
+        tWidth = infectionTexture.width;
+        tHeight = infectionTexture.height;
 
-        for (int x = 0; x < gridTexture.width; x += 1)
+        for (int x = 0; x < infectionTexture.width; x += 1)
         {
-            for (int y = 0; y < gridTexture.height; y += 1)
+            for (int y = 0; y < infectionTexture.height; y += 1)
             {
                 Color infectionColor = new Color(worldInfection[(y * dimentions.x * chunkSize) + x], 0, 0);
-                gridTexture.SetPixel(x, y, infectionColor);
+                infectionTexture.SetPixel(x, y, infectionColor);
             }
         }
-        gridTexture.Apply();
+        infectionTexture.Apply();
     }
 
     private void GenerateGridMesh()

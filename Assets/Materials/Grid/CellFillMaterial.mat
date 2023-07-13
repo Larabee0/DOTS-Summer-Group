@@ -31,7 +31,12 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
-    m_Floats: []
+    m_Floats:
+    - _Noise_Complexity: 150
+    - _Noise_Intensity: 50
+    - _Noise_Speed: 0.05
+    - _Speed: 0.005
+    - _WarpSpeed: 0.005
     m_Colors:
     - _InfectionColor: {r: 0.7075472, g: 0, b: 0.55216426, a: 0}
   m_BuildTextureStacks: []
