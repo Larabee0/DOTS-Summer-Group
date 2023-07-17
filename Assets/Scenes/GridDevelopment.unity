@@ -387,7 +387,7 @@ MonoBehaviour:
     y: 1
   cellScale: 1
   chunkSize: 4
-  pixelsPerCell: 2
+  pixelsPerCell: 1
   meshFilter: {fileID: 1516770741}
   meshRenderer: {fileID: 1516770740}
   textureDisplay: {fileID: 89238803}

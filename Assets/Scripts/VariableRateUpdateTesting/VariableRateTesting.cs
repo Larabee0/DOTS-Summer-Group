@@ -7,14 +7,14 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-[DisableAutoCreation]
+
 [UpdateInGroup(typeof(CustomRateGroup))]
 public partial class VariableRateTesting : SystemBase
 {
     private int pointCount = 2500;
     private Unity.Mathematics.Random random;
-    private float3 minPos = new float3(-100,-100, -100);
-    private float3 maxPos = new float3(100, 100,100);
+    private float3 minPos = new(-100, -100, -100);
+    private float3 maxPos = new(100, 100,100);
 
     protected override void OnStartRunning()
     {
@@ -29,17 +29,19 @@ public partial class VariableRateTesting : SystemBase
         {
             pointArray[i] = random.NextFloat3(minPos, maxPos);
         }
-
+        
         // Schedule returns a dependency
         JobHandle expensiveDependency = new ExpensiveJob
         {
             pointArray = pointArray,
         }.Schedule();
-
+            
         // point array should be disposed off after ExpensiveJob has run
         pointArray.Dispose(expensiveDependency);
         // we want PostExpensiveJobJob to run after expensiveJob has run
         new PostExpensiveJobJob().Schedule(expensiveDependency);
+
+        
     }
 }
 
