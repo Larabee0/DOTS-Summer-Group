@@ -9,6 +9,7 @@ using UnityEngine.Rendering;
 
 public class GridAuthoring : MonoBehaviour
 {
+    
     [Tooltip("Chunk grid dimentions")]
     public int2 dimentions = new(64,64);
     [Tooltip("Main Grid Scale"),Min(0.001f)]
@@ -29,11 +30,13 @@ public class GridAuthoring : MonoBehaviour
     [SerializeField] private MeshRenderer meshRenderer;
     [SerializeField] private MeshRenderer textureDisplay;
 
-    private List<Chunk> chunks = new();
+    public List<Chunk> chunks = new();
     private List<Cell> cells = new();
     private Mesh gridMesh;
 
     private Texture2D gridTexture;
+
+    public static GridAuthoring Grid;
 
     private void Start()
     {
@@ -50,6 +53,7 @@ public class GridAuthoring : MonoBehaviour
             meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 2 };
             GenerateGridMeshJobs();
         }
+        Grid = this;
     }
 
     private void InitialiseGridTexture()
