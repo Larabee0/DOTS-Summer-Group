@@ -35,8 +35,12 @@ public class GridAuthoring : MonoBehaviour
 
     private Texture2D gridTexture;
 
+    public static GridAuthoring Grid;
+
     private void Start()
     {
+        Grid = this;
+
         InitialiseGridTexture();
 
         if (textureDisplay != null)
@@ -98,27 +102,12 @@ public class GridAuthoring : MonoBehaviour
         {
             return;
         }
-        // data prep - all the data the mesh generator needs.
-        NativeArray<float3x2> cellDiagonals = new(cells.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        NativeArray<int2> cellCoordinates = new(cells.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        NativeArray<int2> chunkCoordinates = new(chunks.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        
-        // this takes ages cos serial and accessing managed collections
-        for (int i = 0; i < cells.Count; i++)
-        {
-            cellDiagonals[i] = cells[i].diagonals;
-            cellCoordinates[i] = cells[i].coordinate;
-        }
-        for (int i = 0; i < chunks.Count; i++)
-        {
-            chunkCoordinates[i] = chunks[i].coordinate;
-        }
 
         // mesh generation begins here with allocation of a mesh.
         float startTime = Time.realtimeSinceStartup;
         Mesh.MeshDataArray meshDataArray = Mesh.AllocateWritableMeshData(1);
         Mesh.MeshData meshData = meshDataArray[0];
-        
+
         // creating vertex buffer attributes, only using for positon and uv0s.
         NativeArray<VertexAttributeDescriptor> discriptors = new(2, Allocator.Temp);
         discriptors[0] = new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3, 0);
@@ -172,10 +161,9 @@ public class GridAuthoring : MonoBehaviour
             coordinateMul = chunkSize,
             chunkWidth = dimentions.x,
             geometryWidth = cellDimentions.x + 1,
-            coordinates = chunkCoordinates,
             linesIndices = chunkLinesIndices,
             trianglesIndices = chunkTrianglesIndices
-        }.ScheduleParallel(chunks.Count,64,new JobHandle());
+        }.ScheduleParallel(chunks.Count, 64, new JobHandle());
 
         // fills cell index data and all vertex data.
         var cellJob = new CreateGeometryUV
@@ -183,8 +171,8 @@ public class GridAuthoring : MonoBehaviour
             UVoffset = new(1f / cellDimentions.x, 1f / cellDimentions.y),
             cellDimentions = cellDimentions,
             geometryWidth = cellDimentions.x + 1,
-            coordinates = cellCoordinates,
-            diagonals = cellDiagonals,
+            cellScale = cellScale,
+            cellOffset = cellOffset,
             vertices = vertices,
             uvs = uvs,
             linesIndices = cellLinesIndices,
@@ -197,7 +185,7 @@ public class GridAuthoring : MonoBehaviour
         // setting the submeshes can only be done after the above jobs have finished.
         new SetSubmeshes
         {
-            meshDataArray =meshDataArray,
+            meshDataArray = meshDataArray,
             subMeshCounts = subMeshIndices
         }.Schedule(geometryJobs).Complete();
 
@@ -212,8 +200,16 @@ public class GridAuthoring : MonoBehaviour
         gridMesh.Clear();
         // apply meshDataArray to the current mesh reference.
         Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, gridMesh);
-        // recalaute bounds (Should be moved inside jobs)
-        gridMesh.RecalculateBounds();
+        
+        // because this is flat grid, the bound calculations are simple.
+        Bounds bounds = new()
+        {
+            max = chunks[^1].diagonals.c1,
+            min = chunks[0].diagonals.c0
+        };
+        gridMesh.bounds = bounds;
+        
+
         Debug.LogFormat("Mesh Time = {0}ms", (Time.realtimeSinceStartup - startTime) * 1000f);
     }
 
@@ -387,36 +383,6 @@ public class GridAuthoring : MonoBehaviour
         }
     }
 
-    private void OnDrawGizmos()
-    {
-        return;
-        for (int i = 0; i < chunks.Count; i++)
-        {
-            Chunk cur = chunks[i];
-            Gizmos.color = Color.blue;
-            Gizmos.DrawSphere(cur.centerPosition, 0.2f);
-
-            Gizmos.color = Color.red;
-            for (int s = 0; s < 4; s++)
-            {
-                Gizmos.DrawSphere(cur.Corners[s], 0.15f);
-            }
-        }
-
-        for (int i = 0; i < cells.Count; i++)
-        {
-            Cell cur = cells[i];
-            Gizmos.color = Color.green;
-            Gizmos.DrawSphere(cur.centerPosition,0.1f);
-
-            Gizmos.color = Color.yellow;
-            for (int s = 0; s < 4; s++)
-            {
-                Gizmos.DrawSphere(cur.Corners[s], 0.05f);
-            }
-        }
-    }
-
     //[System.Serializable]
     public class Chunk
     {
@@ -481,7 +447,7 @@ public class GridAuthoring : MonoBehaviour
             diagonals = new(bottomLeft, topRight);
         }
 
-        public Cell (Chunk chunk)
+        public Cell(Chunk chunk)
         {
             chunkIndex = chunk.index;
             chunkCoordinate = chunk.coordinate;
@@ -501,58 +467,6 @@ public class GridAuthoring : MonoBehaviour
             return index.CompareTo(other.index);
         }
     }
-
-
-    /*
-    public void ConstructGridMesh()
-    {
-        gridMesh.Clear();
-        List<Vector3> Vertices = new(data.dimentions.x * 2 + data.dimentions.y * 2 + 4);
-        List<int> Triangles = new(data.dimentions.x * 2 + data.dimentions.y * 2 + 4);
-        Vector2 a;
-        Vector2 b;
-
-        for (int x = 0; x < data.dimentions.x; x++)
-        {
-            a = this[new int2(x, 0)].WorldBottomLeft;
-            b = this[new int2(x, data.dimentions.y - 1)].WorldTopLeft;
-            Vertices.Add(new Vector3(a.x, a.y));
-            Vertices.Add(new Vector3(b.x, b.y));
-            Triangles.Add(Triangles.Count);
-            Triangles.Add(Triangles.Count);
-            if (x == data.dimentions.x - 1)
-            {
-                a = this[new int2(x, 0)].WorldBottomRight;
-                b = this[new int2(x, data.dimentions.y - 1)].WorldTopRight;
-                Vertices.Add(new Vector3(a.x, a.y));
-                Vertices.Add(new Vector3(b.x, b.y));
-                Triangles.Add(Triangles.Count);
-                Triangles.Add(Triangles.Count);
-            }
-        }
-
-        for (int y = 0; y < data.dimentions.y; y++)
-        {
-            a = this[new int2(0, y)].WorldBottomLeft;
-            b = this[new int2(data.dimentions.x - 1, y)].WorldBottomRight;
-            Vertices.Add(new Vector3(a.x, a.y));
-            Vertices.Add(new Vector3(b.x, b.y));
-            Triangles.Add(Triangles.Count);
-            Triangles.Add(Triangles.Count);
-            if (y == data.dimentions.y - 1)
-            {
-                a = this[new int2(0, y)].WorldTopLeft;
-                b = this[new int2(data.dimentions.x - 1, y)].WorldTopRight;
-                Vertices.Add(new Vector3(a.x, a.y));
-                Vertices.Add(new Vector3(b.x, b.y));
-                Triangles.Add(Triangles.Count);
-                Triangles.Add(Triangles.Count);
-            }
-        }
-        gridMesh.SetVertices(Vertices);
-        gridMesh.SetIndices(Triangles, MeshTopology.Lines, 0);
-    }
-    */
 }
 
 

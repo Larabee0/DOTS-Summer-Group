@@ -5,6 +5,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.UIElements;
 
 [BurstCompile]
 public struct CreateGeometry : IJobFor
@@ -13,9 +14,6 @@ public struct CreateGeometry : IJobFor
     public int chunkWidth;
     public int geometryWidth;
 
-    [ReadOnly, DeallocateOnJobCompletion]
-    public NativeArray<int2> coordinates;
-
     // disabling ContainerSafetyRestriction allows out of order write access to arrays
     // and also allows memory aliasing of index buffers
     [WriteOnly, NativeDisableContainerSafetyRestriction]
@@ -23,12 +21,11 @@ public struct CreateGeometry : IJobFor
     [WriteOnly, NativeDisableContainerSafetyRestriction]
     public NativeArray<uint> trianglesIndices;
 
-    public void Execute(int index)
+    public void Execute(int chunkIndex)
     {
-        int2 coordinate = coordinates[index];
+        int2 coordinate = new(chunkIndex % chunkWidth, chunkIndex / chunkWidth);
 
         // get index buffer start positions for this chunk
-        int chunkIndex = coordinate.y * chunkWidth + coordinate.x;
         int indexLine = chunkIndex * 8; // each chunk gets 8 indices in the line buffer
         int indexTri = chunkIndex * 6; // each chunk gets 6 indices in the triangle buffer
 
@@ -73,15 +70,11 @@ public struct CreateGeometry : IJobFor
 [BurstCompile]
 public struct CreateGeometryUV : IJobFor
 {
+    public float cellScale;
+    public float3 cellOffset;
     public float2 UVoffset;
     public int2 cellDimentions;
     public int geometryWidth;
-
-    [ReadOnly, DeallocateOnJobCompletion]
-    public NativeArray<int2> coordinates;
-    [ReadOnly, DeallocateOnJobCompletion]
-    public NativeArray<float3x2> diagonals;
-
 
     // disabling ContainerSafetyRestriction allows out of order write access to arrays
     // and also allows memory aliasing of index buffers
@@ -95,12 +88,12 @@ public struct CreateGeometryUV : IJobFor
     [WriteOnly, NativeDisableContainerSafetyRestriction]
     public NativeArray<uint> trianglesIndices;
 
-    public void Execute(int index)
+    public void Execute(int cellIndex)
     {
-        int2 coordinate = coordinates[index];
+        int2 coordinate = new(cellIndex % cellDimentions.x, cellIndex / cellDimentions.x);
+
 
         // get index buffer start positions for this cell
-        int cellIndex = coordinate.y * cellDimentions.x + coordinate.x;
         int indexLine = cellIndex * 8; // each cell gets 8 indices in the line buffer
         int indexTri = cellIndex * 6; // each cell gets 6 indices in the triangle buffer
 
@@ -117,7 +110,16 @@ public struct CreateGeometryUV : IJobFor
         };
 
         // only passing the diagonals to the job halves the memory needed to start the job
-        float3x2 diagnonal = diagonals[index];
+
+        float halfScale = cellScale / 2f;
+        float3 centerPosition = cellOffset + new float3(coordinate.x * cellScale, 0, coordinate.y * cellScale);
+        float3x2 diagnonal = new()
+        {
+            c0 = centerPosition - halfScale,
+            c1 = centerPosition + halfScale
+        };
+        diagnonal.c0.y = diagnonal.c1.y = 0;
+
         float3x4 corners = new() // calculating the corners from the diagonals is easy.
         {
             c0 = diagnonal.c0,
@@ -186,6 +188,6 @@ public struct SetSubmeshes : IJob
             subMeshCounts.z, MeshTopology.Triangles), MeshUpdateFlags.DontValidateIndices);
 
         meshData.SetSubMesh(3, new SubMeshDescriptor(subMeshCounts.x + subMeshCounts.y + subMeshCounts.z,
-            subMeshCounts.w, MeshTopology.Triangles), MeshUpdateFlags.DontValidateIndices);
+            subMeshCounts.w, MeshTopology.Triangles), MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
     }
 }
