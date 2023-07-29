@@ -1,4 +1,0 @@
-﻿[*.cs]
-
-# IDE0251: Make member 'readonly'
-dotnet_diagnostic.IDE0251.severity = silent
