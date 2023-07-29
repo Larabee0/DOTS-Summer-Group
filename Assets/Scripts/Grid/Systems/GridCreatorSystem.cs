@@ -127,3 +127,15 @@ public struct RemoveCompJob<T> : IJob where T : struct, IComponentData
         ecb.RemoveComponent<T>(sortKey, target);
     }
 }
+
+[BurstCompile]
+public struct AddCompJob<T> : IJob where T : struct, IComponentData
+{
+    public EntityCommandBuffer.ParallelWriter ecb;
+    public Entity target;
+    public int sortKey;
+    public void Execute()
+    {
+        ecb.AddComponent(sortKey, target, ComponentType.ReadWrite<T>());
+    }
+}

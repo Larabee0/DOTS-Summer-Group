@@ -295,22 +295,22 @@ public class GridAuthoring : MonoBehaviour
         triangles[indexTri + 5] = indicies.x;
     }
 
-    private void OnValidate()
-    {
-        if (Application.isPlaying)
-        {
-            InitialiseGridTexture();
-            GenerateGrid();
-            if (useJobs)
-            {
-                GenerateGridMeshJobs();
-            }
-            else
-            {
-                GenerateGridMesh();
-            }
-        }
-    }
+    // private void OnValidate()
+    // {
+    //     if (Application.isPlaying)
+    //     {
+    //         InitialiseGridTexture();
+    //         GenerateGrid();
+    //         if (useJobs)
+    //         {
+    //             GenerateGridMeshJobs();
+    //         }
+    //         else
+    //         {
+    //             GenerateGridMesh();
+    //         }
+    //     }
+    // }
 
     private void GenerateGrid()
     {
@@ -459,11 +459,29 @@ public class GridBaker : Baker<GridAuthoring>
 {
     public override void Bake(GridAuthoring authoring)
     {
-        Entity entity = GetEntity(TransformUsageFlags.Renderable);
+        Entity entity = GetEntity(TransformUsageFlags.None);
         AddComponent<GridTag>(entity);
         AddComponent(entity, authoring.gridData);
         AddComponent<CellReferenceBuffer>(entity);
         AddComponent<ChunkReferenceBuffer>(entity);
         AddComponent<GridUninitialised>(entity);
+        AddComponent<GridGenerateMesh>(entity);
+        AddComponent(entity, new GridSubMeshRenderers
+        {
+            mesh0 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh0"),
+            mesh1 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh1"),
+            mesh2 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh2"),
+            mesh3 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh3")
+        });
+        AddComponentObject(entity, new GridMeshReference() { Value = new Mesh() { name = "Grid Mesh" } });
+        if (Application.isPlaying)
+        {
+            AddComponentObject(entity, new GridMaterialReference { materials = authoring.GetComponent<MeshRenderer>().materials });
+        }
+        else
+        {
+            AddComponentObject(entity, new GridMaterialReference { materials = authoring.GetComponent<MeshRenderer>().sharedMaterials });
+        }
+        
     }
 }
