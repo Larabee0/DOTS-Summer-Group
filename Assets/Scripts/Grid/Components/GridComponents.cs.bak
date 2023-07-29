@@ -457,42 +457,6 @@ public struct GridTag : IComponentData { }
 public struct GridUninitialised : IComponentData { }
 public struct GridCellsUnset : IComponentData { }
 public struct SortChunkCellBuffer : IComponentData { }
-public struct GridGenerateMesh : IComponentData { }
-public struct GridGeneratingMesh : IComponentData { }
-public struct GridGeneratedMesh : IComponentData { }
-
-
-public struct GridMeshStore : IComponentData
-{
-    public Mesh.MeshDataArray Value;
-}
-
-public class GridMeshReference : IComponentData
-{
-    public Mesh Value;
-}
-
-public class GridMaterialReference : IComponentData
-{
-    public Material[] materials;
-}
-
-public struct GridSubMeshRenderers : IComponentData
-{
-    public Entity mesh0;
-    public Entity mesh1;
-    public Entity mesh2;
-    public Entity mesh3;
-
-    public Entity this[int index] => index switch
-    {
-        0 => mesh0,
-        1 => mesh1,
-        2 => mesh2,
-        3 => mesh3,
-        _ => mesh0
-    };
-}
 
 
 public struct CellBufferSorter : IComparer<CellReferenceBuffer>
