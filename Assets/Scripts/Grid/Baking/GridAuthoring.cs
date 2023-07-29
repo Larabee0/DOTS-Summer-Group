@@ -4,33 +4,23 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 public class GridAuthoring : MonoBehaviour
 {
-    [Tooltip("Chunk grid dimentions")]
-    public int2 dimentions = new(64,64);
-    [Tooltip("Main Grid Scale"),Min(0.001f)]
-    public float cellScale = 1f;
-    [Tooltip("chunk size square it to get cells per chunl"), Min(1)]
-    public int chunkSize = 3;
-    [Tooltip("Cell Pixel Dimentions")]
-    [SerializeField, Min(1)] private int pixelsPerCell = 16;
+    public GridData gridData;
 
-
-    private int2 cellDimentions;
-    private float chunkScale;
-    private float3 cellOffset = float3.zero;
-    private int tWidth = 128;
-    private int tHeight = 128;
+    [Tooltip("Only for GameObject mode")]
+    [SerializeField] private bool useJobs;
 
     [SerializeField] private MeshFilter meshFilter;
     [SerializeField] private MeshRenderer meshRenderer;
     [SerializeField] private MeshRenderer textureDisplay;
 
-    private List<Chunk> chunks = new();
-    private List<Cell> cells = new();
+    private readonly List<Chunk> chunks = new();
+    private readonly List<Cell> cells = new();
     private Mesh gridMesh;
 
     private Texture2D gridTexture;
@@ -52,7 +42,14 @@ public class GridAuthoring : MonoBehaviour
             meshRenderer.materials[2].SetTexture("_GridColours", gridTexture);
             GenerateGrid();
             meshFilter.mesh = gridMesh = new Mesh() { name = "Grid Mesh", subMeshCount = 2 };
-            GenerateGridMeshJobs();
+            if (useJobs)
+            {
+                GenerateGridMeshJobs();
+            }
+            else
+            {
+                GenerateGridMesh();
+            }
         }
     }
 
@@ -60,7 +57,7 @@ public class GridAuthoring : MonoBehaviour
     {
         if (gridTexture != null)
         {
-            gridTexture.Reinitialize(dimentions.x * chunkSize * pixelsPerCell, dimentions.y * chunkSize * pixelsPerCell);
+            gridTexture.Reinitialize(gridData.TextureDimentions.x , gridData.TextureDimentions.y );
 
             gridTexture.filterMode = FilterMode.Point;
             gridTexture.wrapModeU = TextureWrapMode.Mirror;
@@ -68,24 +65,22 @@ public class GridAuthoring : MonoBehaviour
         }
         else
         {
-            gridTexture = new(dimentions.x * chunkSize * pixelsPerCell, dimentions.y * chunkSize * pixelsPerCell, TextureFormat.RGBA32, false, true)
+            gridTexture = new(gridData.TextureDimentions.x, gridData.TextureDimentions.y, TextureFormat.RGBA32, false, true)
             {
                 filterMode = FilterMode.Point,
                 wrapModeU = TextureWrapMode.Mirror,
                 wrapModeV = TextureWrapMode.Mirror
             };
         }
-        tWidth = gridTexture.width;
-        tHeight = gridTexture.height;
 
-        for (int x = 0; x < gridTexture.width; x += pixelsPerCell)
+        for (int x = 0; x < gridTexture.width; x += gridData.pixelsPerCell)
         {
-            for (int y = 0; y < gridTexture.height; y += pixelsPerCell)
+            for (int y = 0; y < gridTexture.height; y += gridData.pixelsPerCell)
             {
                 Color colour = UnityEngine.Random.ColorHSV();
-                for (int z = 0; z < pixelsPerCell; z++)
+                for (int z = 0; z < gridData.pixelsPerCell; z++)
                 {
-                    for (int w = 0; w < pixelsPerCell; w++)
+                    for (int w = 0; w < gridData.pixelsPerCell; w++)
                     {
                         gridTexture.SetPixel(x + z, y + w, colour);
                         colour = UnityEngine.Random.ColorHSV();
@@ -113,21 +108,12 @@ public class GridAuthoring : MonoBehaviour
         discriptors[0] = new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3, 0);
         discriptors[1] = new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 2, 1);
 
-        // calculate cell dimentions from chunk dimentions and chunk size
-        cellDimentions = new(dimentions.x * chunkSize, dimentions.y * chunkSize);
-
         // set vertex buffer parameters, also calculating vertex buffer length.
-        meshData.SetVertexBufferParams((cellDimentions.x + 1) * (cellDimentions.y + 1), discriptors);
+        meshData.SetVertexBufferParams(gridData.GetVertexCount(), discriptors);
 
 
         // subMesh index counts
-        int4 subMeshIndices = new()
-        {
-            x = cellDimentions.x * cellDimentions.y * 8,
-            y = dimentions.x * dimentions.y * 8,
-            z = cellDimentions.x * cellDimentions.y * 6,
-            w = dimentions.x * dimentions.y * 6
-        };
+        int4 subMeshIndices = gridData.GetSubMeshIndices();
 
         // 4 submeshes in this mesh, 2 for the line grids and 2 for the triangles (at the Cell & Chunk scale).
         meshData.subMeshCount = 4;
@@ -158,26 +144,26 @@ public class GridAuthoring : MonoBehaviour
         // only fills index data for chunks. vertex data is created by the cellJob
         var chunkJob = new CreateGeometry
         {
-            coordinateMul = chunkSize,
-            chunkWidth = dimentions.x,
-            geometryWidth = cellDimentions.x + 1,
+            coordinateMul = gridData.chunkSize,
+            chunkWidth = gridData.chunkDimentions.x,
+            geometryWidth = gridData.CellDimentions.x + 1,
             linesIndices = chunkLinesIndices,
             trianglesIndices = chunkTrianglesIndices
-        }.ScheduleParallel(chunks.Count, 64, new JobHandle());
+        }.ScheduleParallel(gridData.ChunkCount, 64, new JobHandle());
 
         // fills cell index data and all vertex data.
         var cellJob = new CreateGeometryUV
         {
-            UVoffset = new(1f / cellDimentions.x, 1f / cellDimentions.y),
-            cellDimentions = cellDimentions,
-            geometryWidth = cellDimentions.x + 1,
-            cellScale = cellScale,
-            cellOffset = cellOffset,
+            UVoffset = new(1f / gridData.CellDimentions.x, 1f / gridData.CellDimentions.y),
+            cellDimentions = gridData.CellDimentions,
+            geometryWidth = gridData.CellDimentions.x + 1,
+            cellScale = gridData.cellScale,
+            cellOffset = gridData.GetCellOffset(),
             vertices = vertices,
             uvs = uvs,
             linesIndices = cellLinesIndices,
             trianglesIndices = cellTrianglesIndices
-        }.ScheduleParallel(cells.Count, 64, new JobHandle());
+        }.ScheduleParallel(gridData.CellCount, 64, new JobHandle());
 
         // these can both safely run at the same time
         var geometryJobs = JobHandle.CombineDependencies(chunkJob, cellJob);
@@ -202,12 +188,7 @@ public class GridAuthoring : MonoBehaviour
         Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, gridMesh);
         
         // because this is flat grid, the bound calculations are simple.
-        Bounds bounds = new()
-        {
-            max = chunks[^1].diagonals.c1,
-            min = chunks[0].diagonals.c0
-        };
-        gridMesh.bounds = bounds;
+        gridMesh.bounds = gridData.GetMeshBounds();
         
 
         Debug.LogFormat("Mesh Time = {0}ms", (Time.realtimeSinceStartup - startTime) * 1000f);
@@ -222,25 +203,24 @@ public class GridAuthoring : MonoBehaviour
         gridMesh.Clear();
         gridMesh.indexFormat = IndexFormat.UInt32;
         gridMesh.subMeshCount = 4;
-        cellDimentions = new(dimentions.x * chunkSize, dimentions.y * chunkSize);
-
-        NativeArray<float3> vertices = new((cellDimentions.x + 1) * (cellDimentions.y + 1), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        
+        NativeArray<float3> vertices = new((gridData.CellDimentions.x + 1) * (gridData.CellDimentions.y + 1), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
         NativeArray<float2> uvs = new(vertices.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-        NativeArray<int> cellLinesIndices = new(cellDimentions.x * cellDimentions.y * 8, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-        NativeArray<int> chunkLinesIndices = new(dimentions.x * dimentions.y * 8, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-        NativeArray<int> cellTrianglesIndices = new(cellDimentions.x * cellDimentions.y * 6, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-        NativeArray<int> chunkTrianglesIndices = new(dimentions.x * dimentions.y * 6, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        NativeArray<int> cellLinesIndices = new(gridData.CellDimentions.x * gridData.CellDimentions.y * 8, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        NativeArray<int> chunkLinesIndices = new(gridData.chunkDimentions.x * gridData.chunkDimentions.y * 8, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        NativeArray<int> cellTrianglesIndices = new(gridData.CellDimentions.x * gridData.CellDimentions.y * 6, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        NativeArray<int> chunkTrianglesIndices = new(gridData.chunkDimentions.x * gridData.chunkDimentions.y * 6, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
 
 
         for (int i = 0; i < cells.Count; i++)
         {
             float3x4 corners = cells[i].Corners;
-            AddGeometry(vertices,uvs, cellLinesIndices, cellTrianglesIndices, new float3x2(corners.c0, corners.c2), cells[i].coordinate,cellDimentions.x,1);
+            AddGeometry(vertices,uvs, cellLinesIndices, cellTrianglesIndices, new float3x2(corners.c0, corners.c2), cells[i].coordinate,gridData.CellDimentions.x,1);
         }
         for (int i = 0; i < chunks.Count; i++)
         {
             float3x4 corners = chunks[i].Corners;
-            AddGeometry(vertices, uvs, chunkLinesIndices, chunkTrianglesIndices, new float3x2(corners.c0, corners.c2), chunks[i].coordinate,dimentions.x, chunkSize);
+            AddGeometry(vertices, uvs, chunkLinesIndices, chunkTrianglesIndices, new float3x2(corners.c0, corners.c2), chunks[i].coordinate,gridData.chunkDimentions.x, gridData.chunkSize);
         }
         
         gridMesh.SetVertices(vertices);
@@ -267,17 +247,17 @@ public class GridAuthoring : MonoBehaviour
             c3 = new float3(diagnonals.c1.x, 0f, diagnonals.c0.z)
         };
 
-        float2 cellCentreUV = math.remap(float2.zero, (float2)cellDimentions, float2.zero, 1f, (float2)coordinate);
-        float2 UVoffset = new(1f / cellDimentions.x, 1f / cellDimentions.y);
+        float2 cellCentreUV = math.remap(float2.zero, (float2)gridData.CellDimentions, float2.zero, 1f, (float2)coordinate);
+        float2 UVoffset = new(1f / gridData.CellDimentions.x, 1f / gridData.CellDimentions.y);
         int index = coordinate.y * width + coordinate.x;
         coordinate *= coordinateMul;
 
         int4 indicies = new()
         {
-            x = coordinate.y * (cellDimentions.x + 1) + coordinate.x,
-            y = (coordinate + new int2(0, coordinateMul)).y * (cellDimentions.x + 1) + (coordinate + new int2(0, coordinateMul)).x,
-            z = (coordinate + coordinateMul).y * (cellDimentions.x + 1) + (coordinate + coordinateMul).x,
-            w = (coordinate + new int2(coordinateMul, 0)).y * (cellDimentions.x + 1) + (coordinate + new int2(coordinateMul, 0)).x
+            x = coordinate.y * (gridData.CellDimentions.x + 1) + coordinate.x,
+            y = (coordinate + new int2(0, coordinateMul)).y * (gridData.CellDimentions.x + 1) + (coordinate + new int2(0, coordinateMul)).x,
+            z = (coordinate + coordinateMul).y * (gridData.CellDimentions.x + 1) + (coordinate + coordinateMul).x,
+            w = (coordinate + new int2(coordinateMul, 0)).y * (gridData.CellDimentions.x + 1) + (coordinate + new int2(coordinateMul, 0)).x
         };
 
         for (int i = 0; i < 4; i++)
@@ -315,36 +295,41 @@ public class GridAuthoring : MonoBehaviour
         triangles[indexTri + 5] = indicies.x;
     }
 
-    private void OnValidate()
-    {
-        if (Application.isPlaying)
-        {
-            InitialiseGridTexture();
-            GenerateGrid();
-            GenerateGridMeshJobs();
-        }
-    }
+    // private void OnValidate()
+    // {
+    //     if (Application.isPlaying)
+    //     {
+    //         InitialiseGridTexture();
+    //         GenerateGrid();
+    //         if (useJobs)
+    //         {
+    //             GenerateGridMeshJobs();
+    //         }
+    //         else
+    //         {
+    //             GenerateGridMesh();
+    //         }
+    //     }
+    // }
 
     private void GenerateGrid()
     {
         chunks.Clear();
-        chunkScale =  chunkSize * cellScale;
-        for (int i = 0, x = 0; x < dimentions.x; x++)
+        for (int i = 0, x = 0; x < gridData.chunkDimentions.x; x++)
         {
-            for (int z = 0; z < dimentions.y; z++, i++)
+            for (int z = 0; z < gridData.chunkDimentions.y; z++, i++)
             {
-                chunks.Add(new Chunk(new float3(x * chunkScale, 0, z * chunkScale), chunkScale, i, new int2(x, z)));
+                chunks.Add(new Chunk(new float3(x * gridData.ChunkScale, 0, z * gridData.ChunkScale), gridData.ChunkScale, i, new int2(x, z)));
             }
         }
 
-        cellOffset = chunks[0].Corners.c0 + (cellScale /2);
-        cellOffset.y = 0;
+        float3 cellOffset = gridData.GetCellOffset();
         cells.Clear();
         for (int i = 0; i < chunks.Count; i++)
         {
-            for (int x = 0; x < chunkSize; x++)
+            for (int x = 0; x < gridData.chunkSize; x++)
             {
-                for (int z = 0; z < chunkSize; z++)
+                for (int z = 0; z < gridData.chunkSize; z++)
                 {
                     cells.Add(new Cell(chunks[i]));
                     chunks[i].virtualSubGrid.Add(cells[^1]);
@@ -352,24 +337,24 @@ public class GridAuthoring : MonoBehaviour
             }
         }
 
-        int cellCountX = dimentions.x * chunkSize;
-        int cellCountZ = dimentions.y * chunkSize;
-        //int chunkSize = HexMetrics.chunkSizeX * HexMetrics.chunkSizeZ;
+        int cellCountX = gridData.chunkDimentions.x * gridData.chunkSize;
+        int cellCountZ = gridData.chunkDimentions.y * gridData.chunkSize;
+        //int gridData.chunkSize = HexMetrics.chunkSizeX * HexMetrics.chunkSizeZ;
 
         for (int gridZ = 0, cellIndex = 0; gridZ < cellCountZ; gridZ++)
         {
             for (int gridX = 0; gridX < cellCountX; gridX++, cellIndex++)
             {
-                int chunkX = gridX / chunkSize;
-                int chunkZ = gridZ / chunkSize;
+                int chunkX = gridX / gridData.chunkSize;
+                int chunkZ = gridZ / gridData.chunkSize;
 
                 // cells are stored sorted by chunk Index at this part of initilisation.
-                int chunkIndex = chunkX + chunkZ * dimentions.x;
+                int chunkIndex = chunkX + chunkZ * gridData.chunkDimentions.x;
 
                 // compute index of current cell in main Grid cellBuffer
-                int localX = gridX - chunkX * chunkSize;
-                int localZ = gridZ - chunkZ * chunkSize;
-                int cellBufferIndex = localX + localZ * chunkSize + (chunkIndex * chunkSize * chunkSize);
+                int localX = gridX - chunkX * gridData.chunkSize;
+                int localZ = gridZ - chunkZ * gridData.chunkSize;
+                int cellBufferIndex = localX + localZ * gridData.chunkSize + (chunkIndex * gridData.chunkSize * gridData.chunkSize);
 
                 // set cellIndex in HexCellReference buffer
                 Cell cell = cells[cellBufferIndex];
@@ -377,8 +362,8 @@ public class GridAuthoring : MonoBehaviour
                 //cells[cellBufferIndex] = cell;
                     
                 cell.coordinate = new int2(gridX, gridZ);
-                cell.centerPosition = cellOffset+ new float3(gridX * cellScale, 0, gridZ * cellScale) ;
-                cell.UpdateCorners(cellScale);
+                cell.centerPosition = cellOffset+ new float3(gridX * gridData.cellScale, 0, gridZ * gridData.cellScale) ;
+                cell.UpdateCorners(gridData.cellScale);
             }
         }
     }
@@ -474,6 +459,29 @@ public class GridBaker : Baker<GridAuthoring>
 {
     public override void Bake(GridAuthoring authoring)
     {
+        Entity entity = GetEntity(TransformUsageFlags.None);
+        AddComponent<GridTag>(entity);
+        AddComponent(entity, authoring.gridData);
+        AddComponent<CellReferenceBuffer>(entity);
+        AddComponent<ChunkReferenceBuffer>(entity);
+        AddComponent<GridUninitialised>(entity);
+        AddComponent<GridGenerateMesh>(entity);
+        AddComponent(entity, new GridSubMeshRenderers
+        {
+            mesh0 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh0"),
+            mesh1 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh1"),
+            mesh2 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh2"),
+            mesh3 = CreateAdditionalEntity(TransformUsageFlags.Renderable, false, "SubMesh3")
+        });
+        AddComponentObject(entity, new GridMeshReference() { Value = new Mesh() { name = "Grid Mesh" } });
+        if (Application.isPlaying)
+        {
+            AddComponentObject(entity, new GridMaterialReference { materials = authoring.GetComponent<MeshRenderer>().materials });
+        }
+        else
+        {
+            AddComponentObject(entity, new GridMaterialReference { materials = authoring.GetComponent<MeshRenderer>().sharedMaterials });
+        }
         
     }
 }
